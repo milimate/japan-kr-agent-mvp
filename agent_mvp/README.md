@@ -1,7 +1,7 @@
 # Agent MVP (Link -> LLM 판단 -> 네이버 Tool 호출)
 
 이 프로젝트는 링크 1개를 입력하면 아래를 순서대로 수행합니다.
-1. 상품 정보 추출(현재는 안전한 MVP용 mock)
+1. 상품 정보 추출(제목/가격/이미지/특징/스펙/원문 텍스트)
 2. 정책/리스크 판단
 3. 가격/마진 계산
 4. 승인 여부 결정
@@ -22,6 +22,12 @@ pip install -r requirements.txt
 4. 환경변수
 ```bash
 cp .env.example .env
+```
+LLM 활성화:
+```bash
+OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-4.1-mini
+LLM_ENABLED=true
 ```
 5. 서버 실행
 ```bash
@@ -68,7 +74,8 @@ curl -X POST http://127.0.0.1:8000/naver/publish-raw \
 - 네이버 전용 구조로 고정
 - `NAVER_USE_REAL_API=false`면 mock 동작
 - `NAVER_USE_REAL_API=true`면 인증 토큰 발급 후 네이버 상품등록 API 호출
-- `run-link`는 링크 HTML에서 제목/가격/대표이미지 자동 추출 시도(JSON-LD/meta/title 순서)
+- `run-link`는 링크 HTML에서 제목/가격/이미지/특징/스펙/원문발췌 자동 추출
+- LLM 활성화 시 한국어 요약/셀링포인트/상세구성 자동 생성(`llm_summary_ko`, `llm_selling_points_ko`, `llm_detail_outline_ko`)
 - `run-link-batch`는 링크 여러 개를 한 번에 처리 (시트 연동용)
 - `POST /naver/build-payload`에서 기본 payload 생성 + 필수값 누락 검증 가능
 - `template_hint`를 안 넣으면 제목 기반으로 템플릿 자동선택(`FASHION_ITEMS`, `LIVING`, `DIGITAL_CONTENTS`)

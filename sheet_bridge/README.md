@@ -27,8 +27,23 @@
 ## 5) 결과 확인
 자동으로 아래 컬럼이 채워집니다.
 - 제목/원가/목표가/마진/승인상태/발행상태/메시지
+- 상세페이지 재료:
+  - `image_urls`
+  - `source_description`
+  - `key_features`
+  - `specs_json`
+  - `llm_summary_ko`
+  - `llm_selling_points_ko`
+  - `llm_detail_outline_ko`
+  - `raw_text_snippet`
 
 ## 6) 안전 테스트 모드
 에이전트 서버 `.env`에서 아래 유지:
 - `NAVER_USE_REAL_API=false`
 그러면 네이버 실제 등록 없이 mock 결과만 기록됩니다.
+
+## 7) LLM 켜기
+Render 환경변수에서 아래 설정:
+- `OPENAI_API_KEY` 입력
+- `OPENAI_MODEL=gpt-4.1-mini`
+- `LLM_ENABLED=true`

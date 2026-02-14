@@ -1,2 +1,2 @@
-source_url,source_site,title,source_price_jpy,target_price_krw,estimated_margin_rate,policy_risk,approval_status,publish_status,market_product_id,publish_message,representative_image_url,notes,last_run_at
-https://www.rakuten.co.jp/example-item,,,,,,,,,,,,
+source_url,source_site,title,source_price_jpy,target_price_krw,estimated_margin_rate,policy_risk,approval_status,publish_status,market_product_id,publish_message,representative_image_url,notes,last_run_at,image_urls,source_description,key_features,specs_json,llm_summary_ko,llm_selling_points_ko,llm_detail_outline_ko,raw_text_snippet
+https://www.rakuten.co.jp/example-item,,,,,,,,,,,,,,,,,,,,,

@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     app_name: str = 'Japan KR Agent MVP'
     env: str = 'dev'
     openai_api_key: Optional[str] = None
+    openai_model: str = 'gpt-4.1-mini'
+    llm_enabled: bool = True
 
     default_markup_rate: float = 0.35
     min_margin_rate: float = 0.15

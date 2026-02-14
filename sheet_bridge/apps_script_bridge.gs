@@ -25,6 +25,14 @@ const COL = {
   representative_image_url: 12,
   notes: 13,
   last_run_at: 14,
+  image_urls: 15,
+  source_description: 16,
+  key_features: 17,
+  specs_json: 18,
+  llm_summary_ko: 19,
+  llm_selling_points_ko: 20,
+  llm_detail_outline_ko: 21,
+  raw_text_snippet: 22,
 };
 
 function onOpen() {
@@ -69,7 +77,7 @@ function processRows_(sheet, startRow, numRows) {
   if (startRow < 2) startRow = 2;
   if (numRows <= 0) return;
 
-  const values = sheet.getRange(startRow, 1, numRows, COL.last_run_at).getValues();
+  const values = sheet.getRange(startRow, 1, numRows, COL.raw_text_snippet).getValues();
   const urls = [];
   const map = [];
 
@@ -99,13 +107,21 @@ function processRows_(sheet, startRow, numRows) {
     values[rowIndex][COL.market_product_id - 1] = safe_(out, 'publish_result.market_product_id');
     values[rowIndex][COL.publish_message - 1] = safe_(out, 'publish_result.message');
     values[rowIndex][COL.representative_image_url - 1] = safe_(out, 'extraction.representative_image_url');
+    values[rowIndex][COL.image_urls - 1] = stringifyList_(safe_(out, 'extraction.image_urls'));
+    values[rowIndex][COL.source_description - 1] = safe_(out, 'extraction.source_description');
+    values[rowIndex][COL.key_features - 1] = stringifyList_(safe_(out, 'extraction.key_features'));
+    values[rowIndex][COL.specs_json - 1] = stringifyJson_(safe_(out, 'extraction.specs'));
+    values[rowIndex][COL.llm_summary_ko - 1] = safe_(out, 'extraction.llm_summary_ko');
+    values[rowIndex][COL.llm_selling_points_ko - 1] = stringifyList_(safe_(out, 'extraction.llm_selling_points_ko'));
+    values[rowIndex][COL.llm_detail_outline_ko - 1] = stringifyList_(safe_(out, 'extraction.llm_detail_outline_ko'));
+    values[rowIndex][COL.raw_text_snippet - 1] = safe_(out, 'extraction.raw_text_snippet');
 
     const notes = safe_(out, 'notes');
     values[rowIndex][COL.notes - 1] = Array.isArray(notes) ? notes.join(' | ') : '';
     values[rowIndex][COL.last_run_at - 1] = now;
   }
 
-  sheet.getRange(startRow, 1, numRows, COL.last_run_at).setValues(values);
+  sheet.getRange(startRow, 1, numRows, COL.raw_text_snippet).setValues(values);
 }
 
 function callAgentBatch_(sourceUrls) {
@@ -140,4 +156,18 @@ function safe_(obj, path) {
     cur = cur[parts[i]];
   }
   return cur == null ? '' : cur;
+}
+
+function stringifyList_(v) {
+  if (!Array.isArray(v)) return '';
+  return v.join(' | ');
+}
+
+function stringifyJson_(v) {
+  if (!v || typeof v !== 'object') return '';
+  try {
+    return JSON.stringify(v);
+  } catch (e) {
+    return '';
+  }
 }

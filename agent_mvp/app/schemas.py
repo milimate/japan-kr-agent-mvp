@@ -41,6 +41,14 @@ class ProductExtraction(BaseModel):
     title: str
     source_price_jpy: int
     representative_image_url: Optional[str] = None
+    image_urls: list[str] = Field(default_factory=list)
+    source_description: str = ''
+    key_features: list[str] = Field(default_factory=list)
+    specs: dict[str, str] = Field(default_factory=dict)
+    raw_text_snippet: str = ''
+    llm_summary_ko: str = ''
+    llm_selling_points_ko: list[str] = Field(default_factory=list)
+    llm_detail_outline_ko: list[str] = Field(default_factory=list)
 
 
 class PricingResult(BaseModel):

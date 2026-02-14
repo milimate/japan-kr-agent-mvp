@@ -35,6 +35,14 @@ class LinkPipelineService:
             title=extracted['title'],
             source_price_jpy=extracted['source_price_jpy'],
             representative_image_url=extracted.get('representative_image_url'),
+            image_urls=extracted.get('image_urls', []),
+            source_description=extracted.get('source_description', ''),
+            key_features=extracted.get('key_features', []),
+            specs=extracted.get('specs', {}),
+            raw_text_snippet=extracted.get('raw_text_snippet', ''),
+            llm_summary_ko=extracted.get('llm_summary_ko', ''),
+            llm_selling_points_ko=extracted.get('llm_selling_points_ko', []),
+            llm_detail_outline_ko=extracted.get('llm_detail_outline_ko', []),
         )
 
         pricing = self._calculate_price(extraction.source_price_jpy)
@@ -63,6 +71,11 @@ class LinkPipelineService:
                         "images": [{"url": extraction.representative_image_url}]
                     }
                 }
+            detail_content_html = self._build_detail_content_html(extraction)
+            if detail_content_html:
+                base = overrides.get("originProduct", {})
+                base["detailContent"] = detail_content_html
+                overrides["originProduct"] = base
             product_payload, payload_errors, template_used = self.payload_builder.build(
                 title=extraction.title,
                 sale_price_krw=pricing.target_price_krw,
@@ -87,6 +100,8 @@ class LinkPipelineService:
                         'auto_publish': should_auto_publish,
                         'naver_use_real_api': settings.naver_use_real_api,
                         'template_used': template_used,
+                        'llm_enabled': settings.llm_enabled,
+                        'llm_model': settings.openai_model,
                     },
                 )
             market_res = self.publisher.publish(
@@ -118,6 +133,8 @@ class LinkPipelineService:
                 'min_margin_rate': settings.min_margin_rate,
                 'auto_publish': should_auto_publish,
                 'naver_use_real_api': settings.naver_use_real_api,
+                'llm_enabled': settings.llm_enabled,
+                'llm_model': settings.openai_model,
             },
         )
 
@@ -180,4 +197,39 @@ class LinkPipelineService:
             payload=payload,
             template_used=template_used,
             validation_errors=errors,
+        )
+
+    def _build_detail_content_html(self, extraction: ProductExtraction) -> str:
+        parts: list[str] = []
+        if extraction.llm_summary_ko:
+            parts.append(f"<h2>상품 요약</h2><p>{self._escape_html(extraction.llm_summary_ko)}</p>")
+        if extraction.llm_selling_points_ko:
+            lis = ''.join(f"<li>{self._escape_html(x)}</li>" for x in extraction.llm_selling_points_ko[:8])
+            parts.append(f"<h2>핵심 포인트</h2><ul>{lis}</ul>")
+        if extraction.key_features:
+            lis = ''.join(f"<li>{self._escape_html(x)}</li>" for x in extraction.key_features[:12])
+            parts.append(f"<h2>원문 기반 특징</h2><ul>{lis}</ul>")
+        if extraction.specs:
+            rows = ''.join(
+                f"<tr><th>{self._escape_html(k)}</th><td>{self._escape_html(v)}</td></tr>"
+                for k, v in list(extraction.specs.items())[:20]
+            )
+            parts.append(f"<h2>스펙</h2><table>{rows}</table>")
+        if extraction.llm_detail_outline_ko:
+            lis = ''.join(f"<li>{self._escape_html(x)}</li>" for x in extraction.llm_detail_outline_ko[:10])
+            parts.append(f"<h2>상세 구성</h2><ol>{lis}</ol>")
+        if extraction.raw_text_snippet:
+            parts.append(
+                "<h2>원문 발췌</h2><p>" + self._escape_html(extraction.raw_text_snippet[:1000]) + "</p>"
+            )
+        return ''.join(parts)
+
+    def _escape_html(self, s: str) -> str:
+        return (
+            str(s)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('\"', "&quot;")
+            .replace("'", "&#39;")
         )

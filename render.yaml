@@ -10,7 +10,11 @@ services:
       - key: ENV
         value: dev
       - key: PYTHON_VERSION
-      value: "3.11.9"
+        value: "3.11.9"
+      - key: LLM_ENABLED
+        value: "true"
+      - key: OPENAI_MODEL
+        value: "gpt-4.1-mini"
       - key: AUTO_PUBLISH_ON_RUN_LINK
         value: "true"
       - key: NAVER_USE_REAL_API
@@ -54,4 +58,6 @@ services:
       - key: NAVER_CLIENT_SECRET
         sync: false
       - key: NAVER_ACCOUNT_ID
+        sync: false
+      - key: OPENAI_API_KEY
         sync: false

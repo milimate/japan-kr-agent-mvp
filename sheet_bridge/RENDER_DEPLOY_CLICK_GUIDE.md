@@ -41,10 +41,18 @@ Render 환경변수에서 아래가 `false`인지 확인
 
 이 상태면 네이버 실등록은 일어나지 않고 `mock`로만 테스트됩니다.
 
-## E. 자주 막히는 문제
+## E. LLM 사용 설정
+Render 환경변수에서 아래 확인
+- `LLM_ENABLED=true`
+- `OPENAI_MODEL=gpt-4.1-mini`
+- `OPENAI_API_KEY` 값 입력
+
+설정 후 `Save, rebuild, and deploy` 실행
+
+## F. 자주 막히는 문제
 - `Agent API 오류 404`: `AGENT_BASE_URL` 오타/끝 슬래시 확인
 - `Agent API 오류 500`: Render 로그에서 에러 메시지 확인
 - 첫 호출이 느림: Render 무료 플랜은 슬립 후 첫 호출이 느릴 수 있음
 
-## F. 실등록 전환 직전 체크
+## G. 실등록 전환 직전 체크
 - `/Users/taeheewoo/Documents/New project/sheet_bridge/REAL_PUBLISH_10SEC_CHECKLIST.md`를 먼저 확인하세요.
