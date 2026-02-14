@@ -54,10 +54,12 @@ class LLMClient:
                 'source_price_jpy': source_price_jpy,
                 'representative_image_url': representative_image_url,
                 'image_urls': images,
-                'source_description': parsed.get('source_description', ''),
-                'key_features': parsed.get('key_features', []),
-                'specs': parsed.get('specs', {}),
-                'raw_text_snippet': parsed.get('raw_text_snippet', ''),
+                'source_description': llm_pack.get('translated_source_description_ko')
+                or parsed.get('source_description', ''),
+                'key_features': llm_pack.get('translated_key_features_ko') or parsed.get('key_features', []),
+                'specs': llm_pack.get('translated_specs_ko') or parsed.get('specs', {}),
+                'raw_text_snippet': llm_pack.get('translated_raw_text_snippet_ko')
+                or parsed.get('raw_text_snippet', ''),
                 'llm_summary_ko': llm_pack.get('summary_ko', ''),
                 'llm_selling_points_ko': llm_pack.get('selling_points_ko', []),
                 'llm_detail_outline_ko': llm_pack.get('detail_outline_ko', []),
@@ -239,18 +241,22 @@ class LLMClient:
             'key_features': key_features[:20],
             'specs': specs,
             'raw_text_snippet': raw_text_snippet[:2500],
-            'task': {
-                'goal': 'Korean open-market detail page materials',
-                'output_schema': {
-                    'title_ko': 'string',
-                    'summary_ko': 'string',
-                    'selling_points_ko': ['string'],
-                    'detail_outline_ko': ['string'],
-                },
-                'constraints': [
-                    'No medical/effect exaggeration',
-                    'Do not invent unavailable specs',
-                    'Korean concise and ecommerce-ready',
+                'task': {
+                    'goal': 'Korean open-market detail page materials',
+                    'output_schema': {
+                        'title_ko': 'string',
+                        'summary_ko': 'string',
+                        'selling_points_ko': ['string'],
+                        'detail_outline_ko': ['string'],
+                        'translated_source_description_ko': 'string',
+                        'translated_key_features_ko': ['string'],
+                        'translated_specs_ko': {'key': 'value'},
+                        'translated_raw_text_snippet_ko': 'string',
+                    },
+                    'constraints': [
+                        'No medical/effect exaggeration',
+                        'Do not invent unavailable specs',
+                        'Korean concise and ecommerce-ready',
                 ],
             },
         }
@@ -289,11 +295,17 @@ class LLMClient:
                 'summary_ko': str(parsed.get('summary_ko') or ''),
                 'selling_points_ko': self._to_str_list(parsed.get('selling_points_ko')),
                 'detail_outline_ko': self._to_str_list(parsed.get('detail_outline_ko')),
+                'translated_source_description_ko': str(parsed.get('translated_source_description_ko') or ''),
+                'translated_key_features_ko': self._to_str_list(parsed.get('translated_key_features_ko')),
+                'translated_specs_ko': self._to_str_dict(parsed.get('translated_specs_ko')),
+                'translated_raw_text_snippet_ko': str(parsed.get('translated_raw_text_snippet_ko') or ''),
             }
         except Exception:
             return self._heuristic_llm_pack(title, source_description, key_features)
 
-    def _heuristic_llm_pack(self, title: str, source_description: str, key_features: list[str]) -> dict[str, Any]:
+    def _heuristic_llm_pack(
+        self, title: str, source_description: str, key_features: list[str]
+    ) -> dict[str, Any]:
         return {
             'title_ko': title,
             'summary_ko': source_description[:300],
@@ -304,6 +316,10 @@ class LLMClient:
                 '사용/관리 방법',
                 '구매 전 확인사항',
             ],
+            'translated_source_description_ko': source_description[:600],
+            'translated_key_features_ko': key_features[:20],
+            'translated_specs_ko': {},
+            'translated_raw_text_snippet_ko': '',
         }
 
     def _extract_json_object(self, text: str) -> Optional[dict[str, Any]]:
@@ -332,6 +348,17 @@ class LLMClient:
             s = str(x).strip()
             if s:
                 out.append(s)
+        return out
+
+    def _to_str_dict(self, v: Any) -> dict[str, str]:
+        if not isinstance(v, dict):
+            return {}
+        out: dict[str, str] = {}
+        for k, val in v.items():
+            ks = str(k).strip()
+            vs = str(val).strip()
+            if ks and vs:
+                out[ks] = vs
         return out
 
     def _extract_jsonld_product(self, html: str) -> Optional[dict[str, Any]]:

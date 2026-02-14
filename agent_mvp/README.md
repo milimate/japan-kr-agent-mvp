@@ -76,6 +76,7 @@ curl -X POST http://127.0.0.1:8000/naver/publish-raw \
 - `NAVER_USE_REAL_API=true`면 인증 토큰 발급 후 네이버 상품등록 API 호출
 - `run-link`는 링크 HTML에서 제목/가격/이미지/특징/스펙/원문발췌 자동 추출
 - LLM 활성화 시 한국어 요약/셀링포인트/상세구성 자동 생성(`llm_summary_ko`, `llm_selling_points_ko`, `llm_detail_outline_ko`)
+- LLM 활성화 시 번역 필요 필드도 한국어로 변환(`source_description`, `key_features`, `specs_json`, `raw_text_snippet`)
 - `run-link-batch`는 링크 여러 개를 한 번에 처리 (시트 연동용)
 - `POST /naver/build-payload`에서 기본 payload 생성 + 필수값 누락 검증 가능
 - `template_hint`를 안 넣으면 제목 기반으로 템플릿 자동선택(`FASHION_ITEMS`, `LIVING`, `DIGITAL_CONTENTS`)

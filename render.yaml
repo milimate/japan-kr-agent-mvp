@@ -22,7 +22,7 @@ services:
       - key: DEFAULT_MARKUP_RATE
         value: "0.35"
       - key: MIN_MARGIN_RATE
-        value: "0.15"
+        value: "0.12"
       - key: DEFAULT_FX_RATE
         value: "9.2"
       - key: DEFAULT_SHIPPING_COST_KRW
