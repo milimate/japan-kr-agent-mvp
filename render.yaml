@@ -9,6 +9,8 @@ services:
     envVars:
       - key: ENV
         value: dev
+      - key: PYTHON_VERSION
+      value: "3.11.9"
       - key: AUTO_PUBLISH_ON_RUN_LINK
         value: "true"
       - key: NAVER_USE_REAL_API
