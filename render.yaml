@@ -1,0 +1,55 @@
+services:
+  - type: web
+    name: japan-kr-agent-mvp
+    runtime: python
+    plan: free
+    rootDir: agent_mvp
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ENV
+        value: dev
+      - key: AUTO_PUBLISH_ON_RUN_LINK
+        value: "true"
+      - key: NAVER_USE_REAL_API
+        value: "false"
+      - key: DEFAULT_MARKUP_RATE
+        value: "0.35"
+      - key: MIN_MARGIN_RATE
+        value: "0.15"
+      - key: DEFAULT_FX_RATE
+        value: "9.2"
+      - key: DEFAULT_SHIPPING_COST_KRW
+        value: "9000"
+      - key: DEFAULT_MARKET_FEE_RATE
+        value: "0.13"
+      - key: NAVER_DEFAULT_LEAF_CATEGORY_ID
+        value: "50000000"
+      - key: NAVER_DEFAULT_REPRESENTATIVE_IMAGE_URL
+        value: "https://example.com/sample.jpg"
+      - key: NAVER_DEFAULT_ORIGIN_AREA_CODE
+        value: "02"
+      - key: NAVER_DEFAULT_IMPORTER
+        value: "buying agency"
+      - key: NAVER_DEFAULT_AFTER_SERVICE_GUIDE
+        value: "chat support"
+      - key: NAVER_DEFAULT_AFTER_SERVICE_TEL
+        value: "010-0000-0000"
+      - key: NAVER_DEFAULT_DETAIL_CONTENT_HTML
+        value: "<p>Details coming soon.</p>"
+      - key: NAVER_DEFAULT_NOTICE_TYPE
+        value: "FASHION_ITEMS"
+      - key: NAVER_PAYLOAD_TEMPLATE_MODE
+        value: "auto"
+      - key: NAVER_API_BASE_URL
+        value: "https://api.commerce.naver.com/external"
+      - key: NAVER_TOKEN_TYPE
+        value: "SELLER"
+      - key: NAVER_PRODUCT_CREATE_PATH
+        value: "/v2/products"
+      - key: NAVER_CLIENT_ID
+        sync: false
+      - key: NAVER_CLIENT_SECRET
+        sync: false
+      - key: NAVER_ACCOUNT_ID
+        sync: false
