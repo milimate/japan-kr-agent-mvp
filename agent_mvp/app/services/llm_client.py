@@ -39,6 +39,8 @@ class LLMClient:
             if not representative_image_url and images:
                 representative_image_url = images[0]
 
+            web_pack = self._fetch_web_context_pack(title)
+
             llm_pack = self._llm_enrich(
                 source_url=source_url,
                 title=title,
@@ -46,7 +48,8 @@ class LLMClient:
                 key_features=parsed.get('key_features', []),
                 specs=parsed.get('specs', {}),
                 raw_text_snippet=parsed.get('raw_text_snippet', ''),
-                web_context=self._fetch_web_context(title),
+                web_context=web_pack.get('snippets', []),
+                web_source_links=web_pack.get('links', []),
             )
 
             return {
@@ -67,6 +70,7 @@ class LLMClient:
                 'llm_selling_points_ko': llm_pack.get('selling_points_ko', []),
                 'llm_detail_outline_ko': llm_pack.get('detail_outline_ko', []),
                 'llm_detail_sections_ko': llm_pack.get('detail_sections_ko', []),
+                'source_links': web_pack.get('links', []),
                 'note': parsed.get('note', 'HTML 추출'),
             }
         except Exception as e:
@@ -86,6 +90,7 @@ class LLMClient:
                 'llm_selling_points_ko': [],
                 'llm_detail_outline_ko': [],
                 'llm_detail_sections_ko': [],
+                'source_links': [],
                 'note': f'fallback extraction 사용: {str(e)[:100]}',
             }
 
@@ -237,9 +242,17 @@ class LLMClient:
         specs: dict[str, str],
         raw_text_snippet: str,
         web_context: list[str],
+        web_source_links: list[str],
     ) -> dict[str, Any]:
         if not settings.llm_enabled or not settings.openai_api_key:
             return self._heuristic_llm_pack(title, source_description, key_features)
+
+        facts_blob = self._build_facts_blob(
+            source_description=source_description,
+            key_features=key_features,
+            specs=specs,
+            raw_text_snippet=raw_text_snippet,
+        )
 
         prompt = {
             'source_url': source_url,
@@ -249,6 +262,8 @@ class LLMClient:
             'specs': specs,
             'raw_text_snippet': raw_text_snippet[:2500],
             'web_context': web_context[:12],
+            'web_source_links': web_source_links[:10],
+            'facts_blob': facts_blob[:4000],
             'task': {
                 'goal': 'Korean open-market detail page materials with product judgement',
                 'output_schema': {
@@ -268,6 +283,11 @@ class LLMClient:
                     'Do not invent unavailable specs',
                     'Korean concise and ecommerce-ready',
                     'Use web_context only as auxiliary evidence, prioritize extracted source text',
+                    'Do NOT mention rating, review score, delivery quality, age recommendation unless explicitly present in facts_blob',
+                    'If uncertain, omit the claim instead of guessing',
+                    'Write in clean Korean for ecommerce detail page, avoid awkward literal translation',
+                    'detail_sections_ko should be practical section-style copy for detail page blocks',
+                    'When web_context suggests likely product identity or brand/IP story, include cautious judgement in product_judgement_ko',
                 ],
             },
         }
@@ -301,7 +321,7 @@ class LLMClient:
             parsed = self._extract_json_object(content)
             if not parsed:
                 return self._heuristic_llm_pack(title, source_description, key_features)
-            return {
+            out = {
                 'title_ko': str(parsed.get('title_ko') or title),
                 'summary_ko': str(parsed.get('summary_ko') or ''),
                 'selling_points_ko': self._to_str_list(parsed.get('selling_points_ko')),
@@ -313,6 +333,7 @@ class LLMClient:
                 'translated_specs_ko': self._to_str_dict(parsed.get('translated_specs_ko')),
                 'translated_raw_text_snippet_ko': str(parsed.get('translated_raw_text_snippet_ko') or ''),
             }
+            return self._quality_postprocess(out, facts_blob)
         except Exception:
             return self._heuristic_llm_pack(title, source_description, key_features)
 
@@ -343,16 +364,99 @@ class LLMClient:
             'translated_raw_text_snippet_ko': '',
         }
 
-    def _fetch_web_context(self, query: str) -> list[str]:
+    def _fetch_web_context_pack(self, query: str) -> dict[str, list[str]]:
         q = query.strip()
         if not q:
-            return []
+            return {"snippets": [], "links": []}
         snippets: list[str] = []
-        snippets.extend(self._fetch_duckduckgo_context(q))
-        snippets.extend(self._fetch_wikipedia_context(q))
-        return self._unique_keep_order([s for s in snippets if s])[:12]
+        links: list[str] = []
+        queries = [q]
+        queries.extend(self._extract_search_keywords(q))
 
-    def _fetch_duckduckgo_context(self, query: str) -> list[str]:
+        for qq in queries[:4]:
+            s_html, l_html = self._fetch_ddg_html_search_context(qq)
+            snippets.extend(s_html)
+            links.extend(l_html)
+
+        s1, l1 = self._fetch_duckduckgo_context(q)
+        s2, l2 = self._fetch_wikipedia_context(q)
+        snippets.extend(s1)
+        snippets.extend(s2)
+        links.extend(l1)
+        links.extend(l2)
+        return {
+            "snippets": self._unique_keep_order([s for s in snippets if s])[:16],
+            "links": self._unique_keep_order([x for x in links if x])[:12],
+        }
+
+    def _extract_search_keywords(self, title: str) -> list[str]:
+        # 상품명에서 모델/브랜드 단서를 뽑아 보조 검색 쿼리를 만든다.
+        tokens = re.findall(r"[A-Za-z0-9][A-Za-z0-9\\-_/]{3,}", title)
+        strong = [t for t in tokens if any(ch.isdigit() for ch in t) and len(t) >= 5]
+        phrases = re.findall(r"[A-Za-z]{3,}\\s+[A-Za-z0-9\\-]{2,}", title)
+        out = strong[:3] + phrases[:2]
+        return self._unique_keep_order(out)
+
+    def _fetch_ddg_html_search_context(self, query: str) -> tuple[list[str], list[str]]:
+        try:
+            with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+                res = client.get("https://duckduckgo.com/html/", params={"q": query})
+            if res.status_code >= 400:
+                return [], []
+            soup = BeautifulSoup(res.text or "", "html.parser")
+            snippets: list[str] = []
+            links: list[str] = []
+
+            anchors = soup.select("a.result__a")
+            if not anchors:
+                anchors = soup.select("a[href]")
+            for a in anchors[:5]:
+                href = (a.get("href") or "").strip()
+                title = a.get_text(" ", strip=True)
+                if not href or not title:
+                    continue
+                if href.startswith("/"):
+                    continue
+                links.append(href)
+                snippets.append(f"Search result: {title}")
+                page_snippet = self._fetch_page_snippet(href)
+                if page_snippet:
+                    snippets.append(f"Page excerpt: {page_snippet}")
+            return snippets, links
+        except Exception:
+            return [], []
+
+    def _fetch_page_snippet(self, url: str) -> str:
+        try:
+            with httpx.Client(timeout=8.0, follow_redirects=True) as client:
+                res = client.get(
+                    url,
+                    headers={
+                        "User-Agent": (
+                            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36"
+                        )
+                    },
+                )
+            if res.status_code >= 400:
+                return ""
+            soup = BeautifulSoup(res.text or "", "html.parser")
+            parts: list[str] = []
+            h1 = soup.find("h1")
+            if h1:
+                parts.append(h1.get_text(" ", strip=True))
+            for p in soup.find_all(["p", "li"]):
+                t = p.get_text(" ", strip=True)
+                if len(t) < 30:
+                    continue
+                parts.append(t)
+                if len(" ".join(parts)) > 700:
+                    break
+            return " ".join(parts)[:800]
+        except Exception:
+            return ""
+
+    def _fetch_duckduckgo_context(self, query: str) -> tuple[list[str], list[str]]:
         try:
             with httpx.Client(timeout=10.0) as client:
                 res = client.get(
@@ -360,12 +464,16 @@ class LLMClient:
                     params={'q': query, 'format': 'json', 'no_html': '1', 'skip_disambig': '1'},
                 )
             if res.status_code >= 400:
-                return []
+                return [], []
             data = res.json()
             out: list[str] = []
+            links: list[str] = []
             abstract = str(data.get('AbstractText') or '').strip()
             if abstract:
                 out.append(f"DDG: {abstract}")
+            abstract_url = str(data.get('AbstractURL') or '').strip()
+            if abstract_url:
+                links.append(abstract_url)
             heading = str(data.get('Heading') or '').strip()
             if heading:
                 out.append(f"DDG Heading: {heading}")
@@ -374,15 +482,21 @@ class LLMClient:
                     txt = str(topic.get('Text') or '').strip()
                     if txt:
                         out.append(f"DDG Related: {txt}")
+                    fu = str(topic.get('FirstURL') or '').strip()
+                    if fu:
+                        links.append(fu)
                     for sub in topic.get('Topics', [])[:3]:
                         st = str(sub.get('Text') or '').strip()
                         if st:
                             out.append(f"DDG Related: {st}")
-            return out
+                        sfu = str(sub.get('FirstURL') or '').strip()
+                        if sfu:
+                            links.append(sfu)
+            return out, links
         except Exception:
-            return []
+            return [], []
 
-    def _fetch_wikipedia_context(self, query: str) -> list[str]:
+    def _fetch_wikipedia_context(self, query: str) -> tuple[list[str], list[str]]:
         try:
             with httpx.Client(timeout=10.0) as client:
                 search = client.get(
@@ -396,10 +510,11 @@ class LLMClient:
                     },
                 )
             if search.status_code >= 400:
-                return []
+                return [], []
             data = search.json()
             titles = [x.get('title') for x in data.get('query', {}).get('search', []) if x.get('title')]
             out: list[str] = []
+            links: list[str] = []
             for t in titles:
                 try:
                     with httpx.Client(timeout=10.0) as client:
@@ -412,11 +527,14 @@ class LLMClient:
                     ex = str(js.get('extract') or '').strip()
                     if ex:
                         out.append(f"Wikipedia({t}): {ex}")
+                    cp = str(js.get('content_urls', {}).get('desktop', {}).get('page') or '').strip()
+                    if cp:
+                        links.append(cp)
                 except Exception:
                     continue
-            return out
+            return out, links
         except Exception:
-            return []
+            return [], []
 
     def _extract_json_object(self, text: str) -> Optional[dict[str, Any]]:
         text = text.strip()
@@ -456,6 +574,73 @@ class LLMClient:
             if ks and vs:
                 out[ks] = vs
         return out
+
+    def _build_facts_blob(
+        self,
+        *,
+        source_description: str,
+        key_features: list[str],
+        specs: dict[str, str],
+        raw_text_snippet: str,
+    ) -> str:
+        parts: list[str] = []
+        if source_description:
+            parts.append(f"[source_description] {source_description}")
+        if key_features:
+            parts.append("[key_features] " + " | ".join(key_features[:20]))
+        if specs:
+            kv = [f"{k}:{v}" for k, v in list(specs.items())[:30]]
+            parts.append("[specs] " + " | ".join(kv))
+        if raw_text_snippet:
+            parts.append("[raw_text_snippet] " + raw_text_snippet[:2500])
+        return "\n".join(parts)
+
+    def _quality_postprocess(self, out: dict[str, Any], facts_blob: str) -> dict[str, Any]:
+        text_fields = [
+            "summary_ko",
+            "product_judgement_ko",
+            "translated_source_description_ko",
+            "translated_raw_text_snippet_ko",
+        ]
+        for f in text_fields:
+            out[f] = self._clean_text(str(out.get(f, "")))
+
+        for f in ["selling_points_ko", "detail_outline_ko", "detail_sections_ko", "translated_key_features_ko"]:
+            out[f] = [self._clean_text(x) for x in self._to_str_list(out.get(f))]
+            out[f] = [x for x in out[f] if x]
+        out["detail_sections_ko"] = [x for x in out.get("detail_sections_ko", []) if len(x) >= 18][:12]
+        out["selling_points_ko"] = [x for x in out.get("selling_points_ko", []) if len(x) >= 6][:10]
+
+        # 근거에 없는 평점/배송품질/연령문구 제거
+        allow_rating = any(k in facts_blob.lower() for k in ["rating", "review", "별점", "평점"])
+        if not allow_rating:
+            block_words = ["평점", "별점", "배송", "만족도", "연령", "세 이상"]
+            for f in text_fields:
+                if any(w in out[f] for w in block_words):
+                    out[f] = self._remove_sentences_with_words(out[f], block_words)
+            for f in ["selling_points_ko", "detail_sections_ko", "translated_key_features_ko"]:
+                out[f] = [x for x in out[f] if not any(w in x for w in block_words)]
+
+        # 한글화 실패 시 원문 혼입 방지.
+        for f in ["summary_ko", "product_judgement_ko", "translated_source_description_ko"]:
+            if out.get(f) and not self._contains_korean(str(out.get(f))):
+                out[f] = ""
+
+        return out
+
+    def _clean_text(self, s: str) -> str:
+        t = s.replace("|", " ").replace("  ", " ").strip()
+        t = re.sub(r"\s+\.", ".", t)
+        t = re.sub(r"\s+", " ", t).strip()
+        return t
+
+    def _remove_sentences_with_words(self, text: str, words: list[str]) -> str:
+        chunks = re.split(r"(?<=[.!?])\s+", text)
+        kept = [c for c in chunks if not any(w in c for w in words)]
+        return " ".join(kept).strip()
+
+    def _contains_korean(self, text: str) -> bool:
+        return bool(re.search(r"[가-힣]", text or ""))
 
     def _extract_jsonld_product(self, html: str) -> Optional[dict[str, Any]]:
         pattern = re.compile(
