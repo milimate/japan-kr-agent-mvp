@@ -33,6 +33,8 @@ const COL = {
   llm_selling_points_ko: 20,
   llm_detail_outline_ko: 21,
   raw_text_snippet: 22,
+  llm_product_judgement_ko: 23,
+  llm_detail_sections_ko: 24,
 };
 
 function onOpen() {
@@ -77,7 +79,7 @@ function processRows_(sheet, startRow, numRows) {
   if (startRow < 2) startRow = 2;
   if (numRows <= 0) return;
 
-  const values = sheet.getRange(startRow, 1, numRows, COL.raw_text_snippet).getValues();
+  const values = sheet.getRange(startRow, 1, numRows, COL.llm_detail_sections_ko).getValues();
   const urls = [];
   const map = [];
 
@@ -115,13 +117,15 @@ function processRows_(sheet, startRow, numRows) {
     values[rowIndex][COL.llm_selling_points_ko - 1] = stringifyList_(safe_(out, 'extraction.llm_selling_points_ko'));
     values[rowIndex][COL.llm_detail_outline_ko - 1] = stringifyList_(safe_(out, 'extraction.llm_detail_outline_ko'));
     values[rowIndex][COL.raw_text_snippet - 1] = safe_(out, 'extraction.raw_text_snippet');
+    values[rowIndex][COL.llm_product_judgement_ko - 1] = safe_(out, 'extraction.llm_product_judgement_ko');
+    values[rowIndex][COL.llm_detail_sections_ko - 1] = stringifyList_(safe_(out, 'extraction.llm_detail_sections_ko'));
 
     const notes = safe_(out, 'notes');
     values[rowIndex][COL.notes - 1] = Array.isArray(notes) ? notes.join(' | ') : '';
     values[rowIndex][COL.last_run_at - 1] = now;
   }
 
-  sheet.getRange(startRow, 1, numRows, COL.raw_text_snippet).setValues(values);
+  sheet.getRange(startRow, 1, numRows, COL.llm_detail_sections_ko).setValues(values);
 }
 
 function callAgentBatch_(sourceUrls) {

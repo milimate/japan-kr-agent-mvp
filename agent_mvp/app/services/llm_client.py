@@ -6,6 +6,7 @@ from html import unescape
 from typing import Any
 from typing import Optional
 from urllib.parse import urljoin
+from urllib.parse import quote
 from urllib.parse import urlparse
 
 import httpx
@@ -45,6 +46,7 @@ class LLMClient:
                 key_features=parsed.get('key_features', []),
                 specs=parsed.get('specs', {}),
                 raw_text_snippet=parsed.get('raw_text_snippet', ''),
+                web_context=self._fetch_web_context(title),
             )
 
             return {
@@ -61,8 +63,10 @@ class LLMClient:
                 'raw_text_snippet': llm_pack.get('translated_raw_text_snippet_ko')
                 or parsed.get('raw_text_snippet', ''),
                 'llm_summary_ko': llm_pack.get('summary_ko', ''),
+                'llm_product_judgement_ko': llm_pack.get('product_judgement_ko', ''),
                 'llm_selling_points_ko': llm_pack.get('selling_points_ko', []),
                 'llm_detail_outline_ko': llm_pack.get('detail_outline_ko', []),
+                'llm_detail_sections_ko': llm_pack.get('detail_sections_ko', []),
                 'note': parsed.get('note', 'HTML 추출'),
             }
         except Exception as e:
@@ -78,8 +82,10 @@ class LLMClient:
                 'specs': {},
                 'raw_text_snippet': '',
                 'llm_summary_ko': '',
+                'llm_product_judgement_ko': '',
                 'llm_selling_points_ko': [],
                 'llm_detail_outline_ko': [],
+                'llm_detail_sections_ko': [],
                 'note': f'fallback extraction 사용: {str(e)[:100]}',
             }
 
@@ -230,6 +236,7 @@ class LLMClient:
         key_features: list[str],
         specs: dict[str, str],
         raw_text_snippet: str,
+        web_context: list[str],
     ) -> dict[str, Any]:
         if not settings.llm_enabled or not settings.openai_api_key:
             return self._heuristic_llm_pack(title, source_description, key_features)
@@ -241,22 +248,26 @@ class LLMClient:
             'key_features': key_features[:20],
             'specs': specs,
             'raw_text_snippet': raw_text_snippet[:2500],
-                'task': {
-                    'goal': 'Korean open-market detail page materials',
-                    'output_schema': {
-                        'title_ko': 'string',
-                        'summary_ko': 'string',
-                        'selling_points_ko': ['string'],
-                        'detail_outline_ko': ['string'],
-                        'translated_source_description_ko': 'string',
-                        'translated_key_features_ko': ['string'],
-                        'translated_specs_ko': {'key': 'value'},
-                        'translated_raw_text_snippet_ko': 'string',
-                    },
-                    'constraints': [
-                        'No medical/effect exaggeration',
-                        'Do not invent unavailable specs',
-                        'Korean concise and ecommerce-ready',
+            'web_context': web_context[:12],
+            'task': {
+                'goal': 'Korean open-market detail page materials with product judgement',
+                'output_schema': {
+                    'title_ko': 'string',
+                    'product_judgement_ko': 'string',
+                    'summary_ko': 'string',
+                    'selling_points_ko': ['string'],
+                    'detail_outline_ko': ['string'],
+                    'detail_sections_ko': ['string'],
+                    'translated_source_description_ko': 'string',
+                    'translated_key_features_ko': ['string'],
+                    'translated_specs_ko': {'key': 'value'},
+                    'translated_raw_text_snippet_ko': 'string',
+                },
+                'constraints': [
+                    'No medical/effect exaggeration',
+                    'Do not invent unavailable specs',
+                    'Korean concise and ecommerce-ready',
+                    'Use web_context only as auxiliary evidence, prioritize extracted source text',
                 ],
             },
         }
@@ -295,6 +306,8 @@ class LLMClient:
                 'summary_ko': str(parsed.get('summary_ko') or ''),
                 'selling_points_ko': self._to_str_list(parsed.get('selling_points_ko')),
                 'detail_outline_ko': self._to_str_list(parsed.get('detail_outline_ko')),
+                'detail_sections_ko': self._to_str_list(parsed.get('detail_sections_ko')),
+                'product_judgement_ko': str(parsed.get('product_judgement_ko') or ''),
                 'translated_source_description_ko': str(parsed.get('translated_source_description_ko') or ''),
                 'translated_key_features_ko': self._to_str_list(parsed.get('translated_key_features_ko')),
                 'translated_specs_ko': self._to_str_dict(parsed.get('translated_specs_ko')),
@@ -309,6 +322,7 @@ class LLMClient:
         return {
             'title_ko': title,
             'summary_ko': source_description[:300],
+            'product_judgement_ko': '원문 기준으로 파악한 상품군입니다. 세부 사양은 원문/스펙을 우선 확인하세요.',
             'selling_points_ko': key_features[:5],
             'detail_outline_ko': [
                 '상품 핵심 특징',
@@ -316,11 +330,93 @@ class LLMClient:
                 '사용/관리 방법',
                 '구매 전 확인사항',
             ],
+            'detail_sections_ko': [
+                '이 상품은 어떤 문제를 해결하는지',
+                '핵심 장점과 차별점',
+                '구매 전 체크해야 할 스펙',
+                '추천 사용 시나리오',
+                '주의사항 및 한계',
+            ],
             'translated_source_description_ko': source_description[:600],
             'translated_key_features_ko': key_features[:20],
             'translated_specs_ko': {},
             'translated_raw_text_snippet_ko': '',
         }
+
+    def _fetch_web_context(self, query: str) -> list[str]:
+        q = query.strip()
+        if not q:
+            return []
+        snippets: list[str] = []
+        snippets.extend(self._fetch_duckduckgo_context(q))
+        snippets.extend(self._fetch_wikipedia_context(q))
+        return self._unique_keep_order([s for s in snippets if s])[:12]
+
+    def _fetch_duckduckgo_context(self, query: str) -> list[str]:
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                res = client.get(
+                    'https://api.duckduckgo.com/',
+                    params={'q': query, 'format': 'json', 'no_html': '1', 'skip_disambig': '1'},
+                )
+            if res.status_code >= 400:
+                return []
+            data = res.json()
+            out: list[str] = []
+            abstract = str(data.get('AbstractText') or '').strip()
+            if abstract:
+                out.append(f"DDG: {abstract}")
+            heading = str(data.get('Heading') or '').strip()
+            if heading:
+                out.append(f"DDG Heading: {heading}")
+            for topic in data.get('RelatedTopics', [])[:6]:
+                if isinstance(topic, dict):
+                    txt = str(topic.get('Text') or '').strip()
+                    if txt:
+                        out.append(f"DDG Related: {txt}")
+                    for sub in topic.get('Topics', [])[:3]:
+                        st = str(sub.get('Text') or '').strip()
+                        if st:
+                            out.append(f"DDG Related: {st}")
+            return out
+        except Exception:
+            return []
+
+    def _fetch_wikipedia_context(self, query: str) -> list[str]:
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                search = client.get(
+                    'https://ja.wikipedia.org/w/api.php',
+                    params={
+                        'action': 'query',
+                        'list': 'search',
+                        'srsearch': query,
+                        'format': 'json',
+                        'srlimit': 2,
+                    },
+                )
+            if search.status_code >= 400:
+                return []
+            data = search.json()
+            titles = [x.get('title') for x in data.get('query', {}).get('search', []) if x.get('title')]
+            out: list[str] = []
+            for t in titles:
+                try:
+                    with httpx.Client(timeout=10.0) as client:
+                        s = client.get(
+                            f'https://ja.wikipedia.org/api/rest_v1/page/summary/{quote(str(t))}'
+                        )
+                    if s.status_code >= 400:
+                        continue
+                    js = s.json()
+                    ex = str(js.get('extract') or '').strip()
+                    if ex:
+                        out.append(f"Wikipedia({t}): {ex}")
+                except Exception:
+                    continue
+            return out
+        except Exception:
+            return []
 
     def _extract_json_object(self, text: str) -> Optional[dict[str, Any]]:
         text = text.strip()

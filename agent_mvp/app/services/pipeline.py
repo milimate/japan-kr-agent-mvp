@@ -41,8 +41,10 @@ class LinkPipelineService:
             specs=extracted.get('specs', {}),
             raw_text_snippet=extracted.get('raw_text_snippet', ''),
             llm_summary_ko=extracted.get('llm_summary_ko', ''),
+            llm_product_judgement_ko=extracted.get('llm_product_judgement_ko', ''),
             llm_selling_points_ko=extracted.get('llm_selling_points_ko', []),
             llm_detail_outline_ko=extracted.get('llm_detail_outline_ko', []),
+            llm_detail_sections_ko=extracted.get('llm_detail_sections_ko', []),
         )
 
         pricing = self._calculate_price(extraction.source_price_jpy)
@@ -203,9 +205,16 @@ class LinkPipelineService:
         parts: list[str] = []
         if extraction.llm_summary_ko:
             parts.append(f"<h2>상품 요약</h2><p>{self._escape_html(extraction.llm_summary_ko)}</p>")
+        if extraction.llm_product_judgement_ko:
+            parts.append(
+                f"<h2>상품 판단</h2><p>{self._escape_html(extraction.llm_product_judgement_ko)}</p>"
+            )
         if extraction.llm_selling_points_ko:
             lis = ''.join(f"<li>{self._escape_html(x)}</li>" for x in extraction.llm_selling_points_ko[:8])
             parts.append(f"<h2>핵심 포인트</h2><ul>{lis}</ul>")
+        if extraction.llm_detail_sections_ko:
+            lis = ''.join(f"<li>{self._escape_html(x)}</li>" for x in extraction.llm_detail_sections_ko[:12])
+            parts.append(f"<h2>상세페이지 기획 섹션</h2><ul>{lis}</ul>")
         if extraction.key_features:
             lis = ''.join(f"<li>{self._escape_html(x)}</li>" for x in extraction.key_features[:12])
             parts.append(f"<h2>원문 기반 특징</h2><ul>{lis}</ul>")

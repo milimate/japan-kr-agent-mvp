@@ -33,8 +33,10 @@
   - `key_features`
   - `specs_json`
   - `llm_summary_ko`
+  - `llm_product_judgement_ko`
   - `llm_selling_points_ko`
   - `llm_detail_outline_ko`
+  - `llm_detail_sections_ko`
   - `raw_text_snippet`
 
 ## 6) 안전 테스트 모드

@@ -47,8 +47,10 @@ class ProductExtraction(BaseModel):
     specs: dict[str, str] = Field(default_factory=dict)
     raw_text_snippet: str = ''
     llm_summary_ko: str = ''
+    llm_product_judgement_ko: str = ''
     llm_selling_points_ko: list[str] = Field(default_factory=list)
     llm_detail_outline_ko: list[str] = Field(default_factory=list)
+    llm_detail_sections_ko: list[str] = Field(default_factory=list)
 
 
 class PricingResult(BaseModel):
